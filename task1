@@ -1,0 +1,112 @@
+import os
+import hashlib
+import json
+import time
+
+HASH_FILE = 'file_hashes.json'
+
+def calculate_file_hash(file_path):
+    """Calculate SHA-256 hash of a file."""
+    sha256 = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+def scan_directory(directory):
+    """Scan directory and return a dictionary of file hashes."""
+    file_hashes = {}
+    for root, dirs, files in os.walk(directory):
+        for filename in files:
+            filepath = os.path.join(root, filename)
+            try:
+                file_hashes[filepath] = calculate_file_hash(filepath)
+            except Exception as e:
+                print(f"Error hashing {filepath}: {e}")
+    return file_hashes
+
+def load_previous_hashes():
+    """Load the previous hashes from file."""
+    if os.path.exists(HASH_FILE):
+        with open(HASH_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_hashes(hashes):
+    """Save the current hashes to file."""
+    with open(HASH_FILE, 'w') as f:
+        json.dump(hashes, f, indent=4)
+def clear_hashes():
+    """Clear all tracked hashes and reset state."""
+    if os.path.exists(HASH_FILE):
+        os.remove(HASH_FILE)
+        print("All tracked hashes cleared.")
+    else:
+        print("No hash file to clear.")
+
+def compare_hashes(old_hashes, new_hashes):
+    """Compare old and new hashes to detect changes."""
+    modified = []
+    added = []
+    deleted = []
+
+    for file, hash_value in new_hashes.items():
+        if file not in old_hashes:
+            added.append(file)
+        elif old_hashes[file] != hash_value:
+            modified.append(file)
+
+    for file in old_hashes:
+        if file not in new_hashes:
+            deleted.append(file)
+
+    return modified, added, deleted
+
+def monitor(directory):
+    """Main monitoring function."""
+    print(f"Scanning directory: {directory}")
+    previous_hashes = load_previous_hashes()
+    current_hashes = scan_directory(directory)
+
+    modified, added, deleted = compare_hashes(previous_hashes, current_hashes)
+
+    if not (modified or added or deleted):
+        print("No changes detected.")
+    else:
+        if modified:
+            print("\nModified files:")
+            for f in modified:
+                print(f" - {f}")
+        if added:
+            print("\nAdded files:")
+            for f in added:
+                print(f" + {f}")
+        if deleted:
+            print("\nDeleted files:")
+            for f in deleted:
+                print(f" - {f}")
+
+    # Save current state for next run
+    save_hashes(current_hashes)
+
+if __name__ == "__main__":
+    folder_to_monitor = input("Enter the directory to monitor: ").strip()
+    while True:
+        monitor(folder_to_monitor)
+        print("\nWaiting for next scan (Press Ctrl+C to stop)...\n")
+        time.sleep(10)  # Scan interval in seconds
+    print("File Monitor")
+    print("1. Monitor directory")
+    print("2. Clear all tracked hashes and exit")
+    choice = input("Enter your choice (1/2): ").strip()
+    if choice == "2":
+        clear_hashes()
+    else:
+        folder_to_monitor = input("Enter the directory to monitor: ").strip()
+        try:
+            while True:
+                monitor(folder_to_monitor)
+                print("\nWaiting for next scan (Press Ctrl+C to stop)...\n")
+                time.sleep(10)  # Scan interval in seconds
+        except KeyboardInterrupt:
+            print("\nMonitoring stopped.")
